@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solmar Bay — Sunset Streets</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #101418; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #cash { position: absolute; top: 14px; left: 16px; font-size: 26px; font-weight: 800; color: #7dff9a; text-shadow: 0 2px 4px #000; }
+  #health { position: absolute; top: 48px; left: 16px; width: 180px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 6px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #4ae88a; }
+  #stars { position: absolute; top: 12px; right: 190px; font-size: 26px; letter-spacing: 3px; text-shadow: 0 2px 4px #000; }
+  #minimap { position: absolute; top: 48px; right: 14px; width: 168px; height: 168px; border: 2px solid rgba(255,255,255,.55); border-radius: 8px; background: #101418; }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); max-width: 44%; text-align: center; font-size: 17px; font-weight: 700; background: rgba(0,0,0,.55); padding: 8px 16px; border-radius: 8px; border-left: 4px solid #ffd23a; }
+  #speed { position: absolute; bottom: 18px; right: 20px; font-size: 30px; font-weight: 800; text-shadow: 0 2px 4px #000; }
+  #toast { position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); font-size: 19px; font-weight: 700; background: rgba(0,0,0,.65); padding: 10px 20px; border-radius: 8px; opacity: 0; transition: opacity .4s; white-space: nowrap; }
+  #crosshair { position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { top: 8px; left: 0; width: 18px; height: 2px; }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,0,0,.55) 100%); opacity: 0; }
+  #hint { position: absolute; bottom: 18px; left: 20px; font-size: 13px; color: rgba(255,255,255,.85); text-shadow: 0 1px 3px #000; line-height: 1.5; }
+  /* ---- Overlays ---- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: linear-gradient(180deg, rgba(10,10,26,.45) 0%, rgba(10,10,26,.78) 100%); }
+  .overlay h1 { font-size: 72px; margin: 0; letter-spacing: 6px; color: #ffd23a; text-shadow: 0 4px 0 #c21807, 0 8px 24px #000; }
+  .overlay h2 { font-size: 22px; font-weight: 400; margin: 6px 0 26px; color: #ffe9a0; letter-spacing: 3px; }
+  .overlay p { max-width: 520px; line-height: 1.6; color: #e8e8e8; }
+  .overlay button { pointer-events: auto; font-size: 19px; font-weight: 700; padding: 12px 34px; margin: 6px; border: 2px solid #ffd23a; border-radius: 10px; background: rgba(0,0,0,.55); color: #ffd23a; cursor: pointer; }
+  .overlay button:hover { background: #ffd23a; color: #111; }
+  #howto { background: rgba(0,0,0,.6); border-radius: 10px; padding: 12px 22px; margin-top: 12px; font-size: 15px; text-align: left; }
+  #best-line { color: #9fd8ff; margin-top: 14px; }
+  #end-title { font-size: 84px; color: #ff5a4a; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Solmar Bay: an open-world crime game. Drive, steal cars, outrun the police and finish Rico's jobs."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud" class="hidden">
+  <div id="vignette"></div>
+  <div id="cash">$50</div>
+  <div id="health"><div id="health-fill"></div></div>
+  <div id="stars">☆☆☆☆☆</div>
+  <div id="objective"></div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="speed"></div>
+  <div id="toast"></div>
+  <div id="crosshair"></div>
+  <div id="hint">WASD move / drive &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; F punch<br>1 pistol &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; R reload &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+</div>
+
+<div id="screen-title" class="overlay">
+  <h1>SOLMAR BAY</h1>
+  <h2>SUNSET STREETS</h2>
+  <p>One city, one driver, four jobs for Rico — and every cop in Solmar Bay on your tail. Steal cars, lose the heat, and take the town.</p>
+  <div>
+    <button id="btn-new">New Game</button>
+    <button id="btn-continue" class="hidden">Continue</button>
+    <button id="btn-how">How to Play</button>
+  </div>
+  <div id="howto" class="hidden">
+    <b>WASD</b> move / drive &nbsp;·&nbsp; <b>Mouse</b> look (click to lock) &nbsp;·&nbsp; <b>E</b> get in / out of a car<br>
+    <b>F</b> punch &nbsp;·&nbsp; <b>1</b> pistol, <b>click</b> shoot, <b>R</b> reload &nbsp;·&nbsp; <b>Shift</b> run<br>
+    <b>P</b> pause &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; Crimes raise your wanted level; hide until it cools off.<br>
+    Follow the gold beacon to your next job. Progress saves automatically.
+  </div>
+  <p id="best-line"></p>
+</div>
+
+<div id="screen-pause" class="overlay hidden">
+  <h1 style="font-size:52px">PAUSED</h1>
+  <div>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-restart">Restart</button>
+    <button id="btn-quit">Save &amp; Title</button>
+  </div>
+</div>
+
+<div id="screen-end" class="overlay hidden">
+  <h1 id="end-title">BUSTED!</h1>
+  <p id="end-text"></p>
+  <div><button id="btn-end">Keep Playing</button></div>
+</div>
+
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
