@@ -10,7 +10,7 @@ export function createRenderer(canvas, city) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = 1.15;
   // Real sun shadows: the single biggest step from flat low-poly to natural.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -21,8 +21,8 @@ export function createRenderer(canvas, city) {
 
   const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x8a6a48, 0.75);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffd9a0, 1.35);
-  sun.position.set(-120, 180, -80);
+  const sun = new THREE.DirectionalLight(0xffc27a, 1.5);
+  sun.position.set(-190, 110, -60);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -260;
@@ -31,8 +31,13 @@ export function createRenderer(canvas, city) {
   sun.shadow.camera.bottom = -260;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 600;
-  sun.shadow.bias = -0.0006;
+  sun.shadow.bias = -0.0008;
   scene.add(sun);
+  // Warm bounce off the bay: lifts the shadow side of buildings and cars
+  // so the low sun reads as sunset, not as night.
+  const bounce = new THREE.DirectionalLight(0xff9a5a, 0.28);
+  bounce.position.set(180, 90, 120);
+  scene.add(bounce);
 
   scene.add(city.group);
 

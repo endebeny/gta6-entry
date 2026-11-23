@@ -107,6 +107,40 @@ export function createCity(rng) {
     }
   }
 
+  // Zebra crossings: one striped pad across each road just outside every
+  // intersection, so pedestrians have somewhere to cross. Two textures:
+  // bars along the traffic direction, spaced across the road.
+  function crosswalkTexture(vertical) {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#2e2e33';
+    g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#e8e8e0';
+    for (let i = 10; i < 128; i += 26) {
+      if (vertical) g.fillRect(i, 4, 12, 120);
+      else g.fillRect(4, i, 120, 12);
+    }
+    return new THREE.CanvasTexture(c);
+  }
+  const crossMatH = new THREE.MeshLambertMaterial({ map: crosswalkTexture(false) });
+  const crossMatV = new THREE.MeshLambertMaterial({ map: crosswalkTexture(true) });
+  for (const c of ROAD_CENTRES) {
+    for (const d of ROAD_CENTRES) {
+      // Across the east-west road, just west of the intersection.
+      const cwH = new THREE.Mesh(new THREE.PlaneGeometry(5, ROAD), crossMatH);
+      cwH.rotation.x = -Math.PI / 2;
+      cwH.position.set(d - 14, 0.015, c);
+      group.add(cwH);
+      // Across the north-south road, just south of the intersection.
+      const cwV = new THREE.Mesh(new THREE.PlaneGeometry(ROAD, 5), crossMatV);
+      cwV.rotation.x = -Math.PI / 2;
+      cwV.position.set(c, 0.015, d - 14);
+      group.add(cwV);
+    }
+  }
+
   // Buildings: one to three towers per block, windows facing the street.
   // The block at (36, 36) stays open as Solmar Plaza, with its fountain.
   const roofMat = new THREE.MeshLambertMaterial({ color: PALETTE.roof });
@@ -181,6 +215,11 @@ export function createCity(rng) {
   landmarks.hospital = { x: -216, z: -36, name: 'Hospital' };
   // A simple marina pier and a plaza fountain for the eye.
   box(40, 1, 8, 0x8a6a48, 36, 0.5, HALF + 12, group);
+  // Mooring posts along both edges of the pier.
+  for (let px = 20; px <= 52; px += 8) {
+    box(0.8, 2.2, 0.8, 0x5a4632, px, 1.1, HALF + 8, group);
+    box(0.8, 2.2, 0.8, 0x5a4632, px, 1.1, HALF + 16, group);
+  }
   const fountain = new THREE.Mesh(new THREE.CylinderGeometry(7, 8, 1.2, 16), new THREE.MeshLambertMaterial({ color: 0x9ab8c8 }));
   fountain.position.set(36, 0.6, 36);
   group.add(fountain);
