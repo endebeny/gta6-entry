@@ -4,7 +4,7 @@
 // building footprints, road centrelines, spawn points and named landmarks.
 import { BLOCK, GRID, HALF, PALETTE, PITCH, ROAD, ROAD_CENTRES } from './config.js';
 
-function makeWindowTexture(rng) {
+function makeWindowTexture(rng, litChance, glassA, glassB) {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 256;
@@ -13,8 +13,8 @@ function makeWindowTexture(rng) {
   g.fillRect(0, 0, 128, 256);
   for (let y = 12; y < 244; y += 22) {
     for (let x = 10; x < 118; x += 22) {
-      const lit = rng.chance(0.24);
-      g.fillStyle = lit ? '#ffd98a' : (rng.chance(0.5) ? '#2e4a5e' : '#3e5a6e');
+      const lit = rng.chance(litChance);
+      g.fillStyle = lit ? '#ffd98a' : (rng.chance(0.5) ? glassA : glassB);
       g.fillRect(x, y, 14, 14);
     }
   }
@@ -35,7 +35,10 @@ export function createCity(rng) {
   const group = new THREE.Group();
   const buildings = []; // {minX,maxX,minZ,maxZ,h} collision footprints
   const landmarks = {};
-  const windowTex = makeWindowTexture(rng);
+  const windowTex = makeWindowTexture(rng, 0.24, '#2e4a5e', '#3e5a6e');
+  // A second facade so not every tower wears the same lit windows: fewer
+  // lights on and a cooler glass, for the towers across the street.
+  const windowTexB = makeWindowTexture(rng, 0.12, '#24384a', '#4a6a7e');
 
   const groundMat = new THREE.MeshLambertMaterial({ color: PALETTE.ground });
   const roadMat = new THREE.MeshLambertMaterial({ color: PALETTE.road });
@@ -160,11 +163,19 @@ export function createCity(rng) {
         const x = cx + ox;
         const z = cz + oz;
         const color = rng.pick(PALETTE.building);
-        const mat = new THREE.MeshLambertMaterial({ color, map: windowTex });
+        const mat = new THREE.MeshLambertMaterial({ color, map: rng.chance(0.5) ? windowTex : windowTexB });
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
         mesh.position.set(x, h / 2, z);
         group.add(mesh);
         box(Math.min(w, d) * 0.4, 2, Math.min(w, d) * 0.4, 0x6a5a48, x, h + 1, z, group, roofMat);
+        // A rooftop unit on some towers — an AC box at a roof corner — so
+        // the skyline has a second layer instead of flat roofs.
+        if (rng.chance(0.45)) {
+          const uw = rng.range(2, 3.5);
+          const ux = x + (rng.chance(0.5) ? 1 : -1) * w * 0.28;
+          const uz = z + (rng.chance(0.5) ? 1 : -1) * d * 0.28;
+          box(uw, 1.6, uw, 0x8a8a92, ux, h + 0.8, uz, group);
+        }
         buildings.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, h });
       }
     }
@@ -226,6 +237,61 @@ export function createCity(rng) {
   const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 5, 8), waterMat);
   jet.position.set(36, 3.5, 36);
   group.add(jet);
+
+  // Street furniture: benches along the marina pier and around the plaza,
+  // and bins at a few corners, so the sidewalks feel used, not empty.
+  const benchSlatMat = new THREE.MeshLambertMaterial({ color: 0x9a7a4a });
+  const benchLegMat = new THREE.MeshLambertMaterial({ color: 0x7a5a38 });
+  const binMat = new THREE.MeshLambertMaterial({ color: 0x3a5a3a });
+  function bench(x, y, z, rotY) {
+    const b = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.7), benchSlatMat);
+    seat.position.y = 0.45;
+    b.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 0.1), benchSlatMat);
+    back.position.set(0, 0.75, -0.3);
+    b.add(back);
+    for (const s of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.6), benchLegMat);
+      leg.position.set(1.0 * s, 0.22, 0);
+      b.add(leg);
+    }
+    b.position.set(x, y, z);
+    b.rotation.y = rotY;
+    group.add(b);
+  }
+  // Benches facing the water along the marina pier (the pier top is y=1).
+  for (let px = 22; px <= 50; px += 14) {
+    bench(px, 1, HALF + 9, Math.PI);
+  }
+  // Benches around the plaza, facing the fountain.
+  bench(24, 0, 36, Math.PI / 2);
+  bench(48, 0, 36, -Math.PI / 2);
+  bench(36, 0, 24, 0);
+  bench(36, 0, 48, Math.PI);
+  // Bins at a few intersections, just onto the sidewalk.
+  for (const [bx, bz] of [[-216, -144], [-72, 72], [144, -72], [72, 216], [216, 0]]) {
+    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.4, 1.0, 10), binMat);
+    bin.position.set(bx + 10, 0.5, bz + 10);
+    group.add(bin);
+  }
+  // A few palms along the beach, leaning over the sand.
+  for (let i = 0; i < 6; i += 1) {
+    const bx = -180 + i * 72 + rng.range(-10, 10);
+    const bz = HALF + 18 + rng.range(-4, 4);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 7, 6), trunkMat);
+    trunk.position.set(bx, 3.5, bz);
+    group.add(trunk);
+    for (let f = 0; f < 6; f += 1) {
+      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4.5, 4), frondMat);
+      const a = (f / 6) * Math.PI * 2;
+      frond.position.set(bx + Math.cos(a) * 1.6, 7.4, bz + Math.sin(a) * 1.6);
+      frond.rotation.z = Math.cos(a) * 1.1;
+      frond.rotation.x = -Math.sin(a) * 1.1;
+      group.add(frond);
+    }
+    palms.push({ x: bx, z: bz });
+  }
 
   // Real sun shadows: solid meshes cast, flat ground/roads receive only.
   group.traverse((m) => {

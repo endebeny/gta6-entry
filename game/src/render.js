@@ -17,7 +17,42 @@ export function createRenderer(canvas, city) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x8ec8e8);
-  scene.fog = new THREE.Fog(0xf2c98a, 140, 560);
+  // A lighter haze that starts further out, so distant towers keep their
+  // colour instead of fading to blank cream.
+  scene.fog = new THREE.Fog(0xeec088, 170, 720);
+
+  // Sunset sky: a big gradient dome, so the horizon reads as golden hour
+  // instead of a flat blue backdrop. The dome is unlit and unfogged, and
+  // its warm band sits at the horizon where the fog colour meets it.
+  function makeSkyTexture() {
+    const c = document.createElement('canvas');
+    c.width = 4;
+    c.height = 256;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    // Rich sunset: deep blue up high, a vivid orange band at the horizon.
+    // The stops are saturated on purpose — ACES tone mapping washes colour
+    // out, so a pale gradient would render as blank cream.
+    grad.addColorStop(0.0, '#1e4a9e');
+    grad.addColorStop(0.34, '#5a7ec8');
+    grad.addColorStop(0.45, '#ff8a3a');
+    grad.addColorStop(0.51, '#ffb03a');
+    grad.addColorStop(0.58, '#f2c078');
+    grad.addColorStop(0.7, '#d8b088');
+    grad.addColorStop(1.0, '#8a6a48');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 4, 256);
+    const tex = new THREE.CanvasTexture(c);
+    // The canvas holds sRGB colours: mark it so the renderer does not
+    // treat them as linear and wash the sky out to cream.
+    tex.encoding = THREE.sRGBEncoding;
+    return tex;
+  }
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(900, 24, 16),
+    new THREE.MeshBasicMaterial({ map: makeSkyTexture(), side: THREE.BackSide, fog: false })
+  );
+  scene.add(sky);
 
   const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x8a6a48, 0.75);
   scene.add(hemi);
@@ -77,7 +112,7 @@ export function createRenderer(canvas, city) {
   function pedMesh(ped) {
     let mesh = pedMeshes.get(ped.id);
     if (!mesh) {
-      mesh = makePedMesh(ped.shirt);
+      mesh = makePedMesh(ped);
       mesh.traverse((m) => { if (m.isMesh) m.castShadow = true; });
       scene.add(mesh);
       pedMeshes.set(ped.id, mesh);
@@ -87,12 +122,10 @@ export function createRenderer(canvas, city) {
 
   function ensurePlayerMesh(world) {
     if (!playerMesh) {
-      playerMesh = makePedMesh(0xe86a1e, 0xc89878);
+      // The player is a person too: cap, varied build, limbs that swing.
+      // The cap is part of the mesh now (hairStyle 'cap'), not a bolt-on.
+      playerMesh = makePedMesh({ shirt: 0xe86a1e, skin: 0xc89878, pants: 0x2e3a4a, hair: 0x1a1210, hairStyle: 'cap', capColor: 0x222226, build: 'avg', height: 1 });
       playerMesh.traverse((m) => { if (m.isMesh) m.castShadow = true; });
-      // A cap so the player reads at a glance.
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.28, 0.12, 10), new THREE.MeshLambertMaterial({ color: 0x222226 }));
-      cap.position.y = 1.98;
-      playerMesh.add(cap);
       scene.add(playerMesh);
     }
     return playerMesh;
@@ -152,7 +185,16 @@ export function createRenderer(canvas, city) {
         pm.position.set(player.x, player.y, player.z);
         pm.rotation.y = player.heading;
         pm.rotation.x = 0;
-        // A little bob while walking.
+        // A real walk: legs and arms swing against each other, with a
+        // little bob, all driven by the player's walk phase.
+        const pu = pm.userData;
+        const pSwing = Math.sin(player.walkPhase);
+        if (pu.legL) {
+          pu.legL.rotation.x = pSwing * 0.55;
+          pu.legR.rotation.x = -pSwing * 0.55;
+          pu.armL.rotation.x = -pSwing * 0.33;
+          pu.armR.rotation.x = pSwing * 0.33;
+        }
         pm.position.y = player.y + Math.abs(Math.sin(player.walkPhase)) * 0.08;
       } else {
         pm.visible = false;
@@ -173,14 +215,32 @@ export function createRenderer(canvas, city) {
       for (const ped of world.peds) {
         const mesh = pedMesh(ped);
         mesh.position.set(ped.x, 0, ped.z);
+        const u = mesh.userData;
         if (ped.state === 'down') {
           mesh.rotation.x = Math.PI / 2;
           mesh.rotation.y = 0;
           mesh.position.y = 0.3;
+          // Limbs go slack when the ped is down.
+          if (u.legL) {
+            u.legL.rotation.x = 0;
+            u.legR.rotation.x = 0;
+            u.armL.rotation.x = 0;
+            u.armR.rotation.x = 0;
+          }
         } else {
           mesh.rotation.x = 0;
           mesh.rotation.y = ped.heading;
-          mesh.position.y = Math.abs(Math.sin(time * 6 + ped.id.length)) * 0.03;
+          // A real walk: legs swing in opposition, arms counter-swing,
+          // faster and wider when fleeing, all from the ped's walk phase.
+          const swing = Math.sin(ped.walkPhase || 0);
+          const amp = ped.state === 'flee' ? 0.7 : 0.55;
+          if (u.legL) {
+            u.legL.rotation.x = swing * amp;
+            u.legR.rotation.x = -swing * amp;
+            u.armL.rotation.x = -swing * amp * 0.6;
+            u.armR.rotation.x = swing * amp * 0.6;
+          }
+          mesh.position.y = Math.abs(Math.sin(ped.walkPhase || 0)) * 0.04;
         }
       }
       updateBeacon(world, time);
